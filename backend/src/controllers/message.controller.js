@@ -71,7 +71,7 @@ export const getMessages = async (req, res) => {
 
 export const sendMessage = async (req, res) => {
     try {
-        const { text, image, audio, file, fileType, fileName, attachments } = req.body;
+        const text = req.body.text;
         const { id: receiverId } = req.params;
         const senderId = req.user._id;
 
@@ -82,74 +82,53 @@ export const sendMessage = async (req, res) => {
         let attachmentName;
         const sentAttachments = [];
 
-        if (Array.isArray(attachments) && attachments.length) {
-            for (const fileData of attachments) {
-                const { dataUrl, fileType: itemType, fileName: itemName } = fileData;
-                if (!dataUrl || !itemType || !itemName) continue;
-
+        // ✅ Handle multer files from req.files (array of attachments)
+        if (req.files && req.files.length > 0) {
+            for (const file of req.files) {
+                const { buffer, mimetype, originalname } = file;
+                
+                // Determine Cloudinary resource_type
                 let resourceType = "raw";
-                if (itemType.startsWith("image/")) {
+                if (mimetype.startsWith("image/")) {
                     resourceType = "image";
-                } else if (itemType.startsWith("audio/")) {
-                    resourceType = "auto";
+                } else if (mimetype.startsWith("audio/")) {
+                    resourceType = "video"; // Cloudinary handles audio as video for webm
                 }
 
-                const uploadResponse = await cloudinary.uploader.upload(dataUrl, {
-                    resource_type: resourceType,
+                // ✅ Upload to Cloudinary using buffer - FIXED syntax
+                const uploadResponse = await new Promise((resolve, reject) => {
+                  const uploadStream = cloudinary.uploader.upload_stream(
+                    { resource_type: resourceType },
+                    (error, result) => {
+                      if (error) {
+                        console.error("Cloudinary upload error:", error);
+                        reject(error);
+                      } else {
+                        resolve(result);
+                      }
+                    }
+                  );
+                  uploadStream.end(buffer);
                 });
 
                 const url = uploadResponse.secure_url;
-                sentAttachments.push({ url, type: itemType, name: itemName });
+                sentAttachments.push({ 
+                    url, 
+                    type: mimetype, 
+                    name: originalname || `attachment-${Date.now()}` 
+                });
 
-                if (!imageUrl && itemType.startsWith("image/")) {
+                // Set legacy fields for compatibility
+                if (mimetype.startsWith("image/") && !imageUrl) {
                     imageUrl = url;
                 }
-                if (!audioUrl && itemType.startsWith("audio/")) {
+                if (mimetype.startsWith("audio/") && !audioUrl) {
                     audioUrl = url;
                 }
-                if (!attachmentUrl && !itemType.startsWith("image/") && !itemType.startsWith("audio/")) {
+                if (!mimetype.startsWith("image/") && !mimetype.startsWith("audio/") && !attachmentUrl) {
                     attachmentUrl = url;
-                    attachmentType = itemType;
-                    attachmentName = itemName;
-                }
-            }
-        } else {
-            if (image) {
-                const uploadResponse = await cloudinary.uploader.upload(image, {
-                    resource_type: "image",
-                });
-                imageUrl = uploadResponse.secure_url;
-            }
-
-            if (audio) {
-                const uploadResponse = await cloudinary.uploader.upload(audio, {
-                    resource_type: "auto",
-                });
-                audioUrl = uploadResponse.secure_url;
-            }
-
-            if (file) {
-                let resourceType = "auto";
-                if (fileType?.startsWith("image/")) {
-                    resourceType = "image";
-                } else if (fileType?.startsWith("audio/")) {
-                    resourceType = "auto";
-                } else {
-                    resourceType = "raw";
-                }
-
-                const uploadResponse = await cloudinary.uploader.upload(file, {
-                    resource_type: resourceType,
-                });
-                attachmentUrl = uploadResponse.secure_url;
-                attachmentType = fileType;
-                attachmentName = fileName;
-
-                if (fileType?.startsWith("image/")) {
-                    imageUrl = attachmentUrl;
-                }
-                if (fileType?.startsWith("audio/")) {
-                    audioUrl = attachmentUrl;
+                    attachmentType = mimetype;
+                    attachmentName = originalname;
                 }
             }
         }
@@ -157,7 +136,7 @@ export const sendMessage = async (req, res) => {
         const newMessage = new Message({
             senderId,
             receiverId,
-            text,
+            text: text || "",
             image: imageUrl,
             audio: audioUrl,
             attachmentUrl,
@@ -176,7 +155,7 @@ export const sendMessage = async (req, res) => {
         res.status(201).json(newMessage);
     } catch (error) {
         console.log("Error in sendMessage controller: ", error.message);
-        res.status(500).json({ error: "Internal Server Error" });
+        res.status(500).json({ error: error.message || "Internal Server Error" });
     }
 };
 

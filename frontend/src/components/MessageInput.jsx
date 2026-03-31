@@ -12,11 +12,11 @@ const MessageInput = () => {
   const recordingChunksRef = useRef([]);
   const { sendMessage } = useChatStore();
 
-  const readFile = (file) =>
+  const readFileForPreview = (file) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        resolve({ dataUrl: reader.result, type: file.type, name: file.name });
+        resolve({ dataUrl: reader.result, type: file.type, name: file.name, file });
       };
       reader.onerror = reject;
       reader.readAsDataURL(file);
@@ -32,7 +32,7 @@ const MessageInput = () => {
     }
 
     const loadedAttachments = await Promise.all(
-      allowedFiles.map(async (file) => await readFile(file))
+      allowedFiles.map(async (file) => await readFileForPreview(file))
     );
 
     setAttachments((prev) => [...prev, ...loadedAttachments]);
@@ -82,27 +82,28 @@ const MessageInput = () => {
 
   const removeAttachment = (index) => {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
-    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!text.trim() && attachments.length === 0) return;
 
-    const payload = {
-      text: text.trim() || undefined,
-      attachments: attachments.map(({ dataUrl, type, name }) => ({
-        dataUrl,
-        fileType: type,
-        fileName: name,
-      })),
-    };
+    // ✅ Create FormData with original File objects (not dataURLs)
+    const formData = new FormData();
+    if (text.trim()) {
+      formData.append("text", text.trim());
+    }
+
+    attachments.forEach(({ file, type, name }) => {
+      if (file) {
+        formData.append("attachments", file, name);
+      }
+    });
 
     try {
-      await sendMessage(payload);
+      await sendMessage(formData);
       setText("");
       setAttachments([]);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (error) {
       console.error("Failed to send message:", error);
     }
