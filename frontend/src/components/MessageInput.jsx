@@ -57,10 +57,11 @@ const MessageInput = () => {
         }
       };
 
+
       recorder.onstop = async () => {
         const blob = new Blob(recordingChunksRef.current, { type: "audio/webm" });
-        const file = new File([blob], `voice-message-${Date.now()}.webm`, { type: blob.type });
-        const loadedAttachment = await readFile(file);
+
+const loadedAttachment =
         setAttachments((prev) => [...prev, loadedAttachment]);
         setIsRecording(false);
         stream.getTracks().forEach((track) => track.stop());
