@@ -59,12 +59,18 @@ const MessageInput = () => {
 
 
       recorder.onstop = async () => {
-        const blob = new Blob(recordingChunksRef.current, { type: "audio/webm" });
-
-const loadedAttachment =
-        setAttachments((prev) => [...prev, loadedAttachment]);
-        setIsRecording(false);
-        stream.getTracks().forEach((track) => track.stop());
+        try {
+          const blob = new Blob(recordingChunksRef.current, { type: "audio/webm" });
+          const file = new File([blob], `voice-${Date.now()}.webm`, { type: "audio/webm" });
+          const loadedAttachment = await readFileForPreview(file);
+          setAttachments((prev) => [...prev, loadedAttachment]);
+        } catch (error) {
+          console.error("Recording process error:", error);
+          toast.error("Failed to process recording");
+        } finally {
+          setIsRecording(false);
+          stream.getTracks().forEach((track) => track.stop());
+        }
       };
 
       recorder.start();
